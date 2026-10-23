@@ -732,6 +732,7 @@
       const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleTimeString());
       const [isFetching, setIsFetching] = useState(false);
       const [apiStatus, setApiStatus] = useState({ connected: false, msg: '連線偵測中...' });
+      const [syncPulse, setSyncPulse] = useState(false);
       const [showHelpModal, setShowHelpModal] = useState(false);
       const isFetchingRef = useRef(false);
 
@@ -766,8 +767,8 @@
 
         let isSuccess = false;
         try {
-          const ep = getApiEndpoint('/api/stocks');
-          const res = await fetchWithTimeout(ep, {}, 2500);
+          const ep = getApiEndpoint(`/api/stocks?_t=${Date.now()}`);
+          const res = await fetchWithTimeout(ep, { cache: 'no-store' }, 5000);
 
           if (res && res.ok) {
             const ct = (res.headers && res.headers.get('content-type')) || '';
@@ -808,6 +809,8 @@
                 }
                 isSuccess = true;
                 setApiStatus({ connected: true, msg: '🟢 官方即時連線中' });
+                setSyncPulse(true);
+                setTimeout(() => setSyncPulse(false), 900);
               }
             }
           }
@@ -871,7 +874,7 @@
         setIsScanning(true);
         try {
           const ep = getApiEndpoint(`/api/market-scan?mode=${strat}&limit=60`);
-          const res = await fetchWithTimeout(ep, {}, 2500);
+          const res = await fetchWithTimeout(ep, { cache: 'no-store' }, 5000);
           if (res && res.ok) {
             const data = await res.json();
             if (data && data.stocks && data.stocks.length > 0) {
@@ -987,7 +990,7 @@
         try {
           const gkey = geminiApiKey || '';
           const ep = getApiEndpoint(`/api/stock-news?symbol=${encodeURIComponent(stock.symbol)}&name=${encodeURIComponent(stock.name)}&gemini_key=${encodeURIComponent(gkey)}`);
-          const res = await fetchWithTimeout(ep, {}, 2500);
+          const res = await fetchWithTimeout(ep, { cache: 'no-store' }, 5000);
           if (res && res.ok) {
             const data = await res.json();
             if (data && (data.bullish_news || data.sentiment_score !== undefined)) {
@@ -1060,7 +1063,7 @@
 
         try {
           const ep = getApiEndpoint(`/api/broker-chip?symbol=${encodeURIComponent(stock.symbol)}`);
-          const res = await fetchWithTimeout(ep, {}, 2500);
+          const res = await fetchWithTimeout(ep, { cache: 'no-store' }, 5000);
           if (res && res.ok) {
             const data = await res.json();
             if (data && data.major_buyers) {
@@ -1112,23 +1115,23 @@
         fetchLiveData();
       }, []);
 
-      // 獨立定時器：倒數數字永遠順暢倒數，絕不受網路影響！
+      // 核心定時器：精準每秒倒數，倒數至 0 時 100% 同步觸發撮合更新！
       useEffect(() => {
         if (syncIntervalSec <= 0) return;
-        const countdownTimer = setInterval(() => {
-          setCountdown(c => (c > 1 ? c - 1 : syncIntervalSec));
+        const timer = setInterval(() => {
+          setCountdown(c => {
+            if (c <= 1) {
+              fetchLiveData();
+              if (scanMode === 'FULL_MARKET') {
+                fetchMarketScan(marketScanStrategy);
+              }
+              return syncIntervalSec;
+            }
+            return c - 1;
+          });
         }, 1000);
-        return () => clearInterval(countdownTimer);
-      }, [syncIntervalSec]);
-
-      // 獨立定時器：安全週期性同步
-      useEffect(() => {
-        if (syncIntervalSec <= 0) return;
-        const fetchTimer = setInterval(() => {
-          fetchLiveData();
-        }, syncIntervalSec * 1000);
-        return () => clearInterval(fetchTimer);
-      }, [syncIntervalSec]);
+        return () => clearInterval(timer);
+      }, [syncIntervalSec, scanMode, marketScanStrategy]);
 
 
       // 策略分頁與搜尋過濾
@@ -1248,11 +1251,16 @@
                 ))}
               </div>
 
-              {/* 倒數狀態 Badge */}
+              {/* 倒數狀態 Badge 與即時跳動反饋 */}
               <div className="px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs flex items-center gap-2">
-                <span className="text-slate-400">已同步: <strong className="text-slate-200">{lastUpdated}</strong></span>
-                <span className="px-2 py-0.5 rounded bg-rose-950/80 text-rose-300 font-black text-[11px] border border-rose-800/50">
-                  {isFetching ? '⚡ 同步中...' : `倒數 ${countdown}s`}
+                <span className={`w-2 h-2 rounded-full transition-all duration-300 ${syncPulse ? 'bg-emerald-400 scale-150 shadow-md shadow-emerald-400/80 ring-2 ring-emerald-300' : 'bg-emerald-500/50'}`}></span>
+                <span className="text-slate-400">已同步: <strong className="text-slate-200 font-mono">{lastUpdated}</strong></span>
+                <span className={`px-2 py-0.5 rounded font-black text-[11px] border transition-all ${
+                  isFetching || syncPulse 
+                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60 shadow-sm' 
+                    : 'bg-rose-950/80 text-rose-300 border-rose-800/50'
+                }`}>
+                  {isFetching ? '⚡ 撮合中...' : syncPulse ? '✔ 剛剛已更新' : `倒數 ${countdown}s`}
                 </span>
               </div>
 

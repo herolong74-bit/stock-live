@@ -841,7 +841,8 @@
 
     function App() {
       const [stocks, setStocks] = useState(BREAKOUT_STOCKS);
-      const [selectedTab, setSelectedTab] = useState('ALL'); // ALL, BREAKOUT, MA_CROSS, VOLUME, BOLLINGER, INSTITUTION, BOTTOM
+      const [selectedTabs, setSelectedTabs] = useState(['ALL']); // 多選勾選模式：預設 ['ALL']，可同時勾選多個策略一併篩選
+      const [multiFilterMode, setMultiFilterMode] = useState('AND'); // 'AND' (同時符合所有勾選條件) | 'OR' (符合任一勾選條件)
       const [searchTerm, setSearchTerm] = useState('');
       const [minStars, setMinStars] = useState(0);
       const [onlyMaBull, setOnlyMaBull] = useState(false);
@@ -872,6 +873,153 @@
           return '';
         }
       });
+
+      // 管理員每日重點消息專區 State
+      const [dailyNewsText, setDailyNewsText] = useState(() => {
+        try {
+          return localStorage.getItem('admin_daily_news_text') || '';
+        } catch(e) {
+          return '';
+        }
+      });
+      const [dailyNewsDraft, setDailyNewsDraft] = useState(() => {
+        try {
+          return localStorage.getItem('admin_daily_news_text') || '';
+        } catch(e) {
+          return '';
+        }
+      });
+      const [dailyNewsTime, setDailyNewsTime] = useState(() => {
+        try {
+          return localStorage.getItem('admin_daily_news_time') || '';
+        } catch(e) {
+          return '';
+        }
+      });
+      const [adminPassword, setAdminPassword] = useState(() => {
+        try {
+          return localStorage.getItem('admin_daily_news_pwd') || '8888';
+        } catch(e) {
+          return '8888';
+        }
+      });
+      const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+      const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+      const [passwordInput, setPasswordInput] = useState('');
+      const [passwordError, setPasswordError] = useState('');
+      const [showChangePwd, setShowChangePwd] = useState(false);
+      const [newPwdInput, setNewPwdInput] = useState('');
+      const [adminSaveToast, setAdminSaveToast] = useState('');
+
+      // 程式通行金鑰 (App Access Key) 與管理員金鑰密碼設定 State
+      const [appAccessKey, setAppAccessKey] = useState(() => {
+        try {
+          return localStorage.getItem('app_access_key_pwd') || '1688';
+        } catch(e) {
+          return '1688';
+        }
+      });
+      const [isAppAuthorized, setIsAppAuthorized] = useState(() => {
+        try {
+          const savedKey = localStorage.getItem('app_access_key_pwd') || '1688';
+          return sessionStorage.getItem('app_unlocked_key') === savedKey;
+        } catch(e) {
+          return false;
+        }
+      });
+      const [gateKeyInput, setGateKeyInput] = useState('');
+      const [gateKeyError, setGateKeyError] = useState('');
+      const [showGateAdminPanel, setShowGateAdminPanel] = useState(false);
+      const [gateAdminPwdInput, setGateAdminPwdInput] = useState('');
+      const [gateNewAppKeyInput, setGateNewAppKeyInput] = useState('');
+      const [gateAdminMsg, setGateAdminMsg] = useState('');
+
+      // 金鑰設定彈窗內的管理員驗證 State
+      const [isKeyModalAdminUnlocked, setIsKeyModalAdminUnlocked] = useState(false);
+      const [keyModalAdminInput, setKeyModalAdminInput] = useState('');
+      const [keyModalAdminError, setKeyModalAdminError] = useState('');
+      const [modalNewAppKey, setModalNewAppKey] = useState('');
+      const [modalNewAdminPwd, setModalNewAdminPwd] = useState('');
+      const [keyModalToast, setKeyModalToast] = useState('');
+
+      // 驗證程式通行金鑰進入系統
+      const handleVerifyAppAccessKey = () => {
+        const clean = (gateKeyInput || '').trim();
+        if (clean === appAccessKey || clean === adminPassword) {
+          setIsAppAuthorized(true);
+          setGateKeyError('');
+          setGateKeyInput('');
+          if (clean === adminPassword) {
+            setIsAdminUnlocked(true);
+            setIsKeyModalAdminUnlocked(true);
+          }
+          try {
+            sessionStorage.setItem('app_unlocked_key', appAccessKey);
+          } catch(e) {}
+        } else {
+          setGateKeyError('❌ 程式金鑰密碼錯誤，請向管理員索取正確金鑰！');
+        }
+      };
+
+      // 管理員設定新的「程式通行金鑰密碼」
+      const handleAdminSetAppKey = async (newKeyStr) => {
+        const cleanKey = (newKeyStr || '').trim();
+        if (!cleanKey) return;
+        setAppAccessKey(cleanKey);
+        try {
+          localStorage.setItem('app_access_key_pwd', cleanKey);
+          sessionStorage.setItem('app_unlocked_key', cleanKey);
+        } catch(e) {}
+        setKeyModalToast(`✔ 程式金鑰密碼已更新為：${cleanKey}`);
+        setTimeout(() => setKeyModalToast(''), 3000);
+        try {
+          await fetchApiWithFallback(`/api/daily-news?action=save&app_key=${encodeURIComponent(cleanKey)}`, { cache: 'no-store' }, 5000);
+        } catch(e) {}
+      };
+
+      const handleAdminUnlock = () => {
+        if (passwordInput === adminPassword) {
+          setIsAdminUnlocked(true);
+          setShowPasswordPrompt(false);
+          setPasswordInput('');
+          setPasswordError('');
+          setDailyNewsDraft(dailyNewsText);
+        } else {
+          setPasswordError('❌ 專用密碼錯誤，請重新輸入！');
+        }
+      };
+
+      const handleSaveDailyNews = async (lockAfterSave = false) => {
+        const nowStr = new Date().toLocaleString('zh-TW', { hour12: false });
+        setDailyNewsText(dailyNewsDraft);
+        setDailyNewsTime(nowStr);
+        try {
+          localStorage.setItem('admin_daily_news_text', dailyNewsDraft);
+          localStorage.setItem('admin_daily_news_time', nowStr);
+        } catch(e) {}
+        setAdminSaveToast('✔ 每日重點消息已儲存發布！');
+        setTimeout(() => setAdminSaveToast(''), 2500);
+        if (lockAfterSave) {
+          setIsAdminUnlocked(false);
+          setShowChangePwd(false);
+        }
+        try {
+          await fetchApiWithFallback(`/api/daily-news?action=save&text=${encodeURIComponent(dailyNewsDraft)}&time=${encodeURIComponent(nowStr)}`, { cache: 'no-store' }, 5000);
+        } catch(e) {}
+      };
+
+      const handleUpdateAdminPassword = () => {
+        const cleanPwd = (newPwdInput || '').trim();
+        if (!cleanPwd) return;
+        setAdminPassword(cleanPwd);
+        try {
+          localStorage.setItem('admin_daily_news_pwd', cleanPwd);
+        } catch(e) {}
+        setNewPwdInput('');
+        setShowChangePwd(false);
+        setAdminSaveToast('🔑 管理員專用密碼已更新！');
+        setTimeout(() => setAdminSaveToast(''), 2500);
+      };
 
       // 大盤起漲多空溫度計資料 (預設鎖定最新官方真實收盤與美股即時報價)
       const [marketIndices, setMarketIndices] = useState([
@@ -1350,9 +1498,32 @@
         setLoadingChip(false);
       };
 
-      // 載入瞬間立即執行第 1 次同步
+      // 載入瞬間立即執行第 1 次同步並讀取管理員每日重點消息
       useEffect(() => {
         fetchLiveData();
+        (async () => {
+          try {
+            const res = await fetchApiWithFallback(`/api/daily-news?_t=${Date.now()}`, { cache: 'no-store' }, 5000);
+            if (res && res.ok) {
+              const d = await res.json();
+              if (d && d.app_key) {
+                setAppAccessKey(d.app_key);
+                try {
+                  localStorage.setItem('app_access_key_pwd', d.app_key);
+                } catch(e) {}
+              }
+              if (d && d.text !== undefined && d.updated_at) {
+                setDailyNewsText(d.text);
+                setDailyNewsDraft(d.text);
+                setDailyNewsTime(d.updated_at);
+                try {
+                  localStorage.setItem('admin_daily_news_text', d.text);
+                  localStorage.setItem('admin_daily_news_time', d.updated_at);
+                } catch(e) {}
+              }
+            }
+          } catch(e) {}
+        })();
       }, []);
 
       // 核心定時器：精準每秒倒數，倒數至 0 時 100% 同步觸發撮合更新！
@@ -1374,7 +1545,60 @@
       }, [syncIntervalSec, scanMode, marketScanStrategy]);
 
 
-      // 策略分頁與搜尋過濾
+      // 單一策略條件判定輔助函式
+      const matchStockByTab = (stock, tabId) => {
+        if (tabId === 'ALL') return true;
+        if (tabId === 'BREAKOUT') {
+          return stock.change_pct > 0 || stock.breakout_strategy.includes('即時起漲');
+        }
+        if (tabId === 'MA_CROSS') {
+          return stock.criteria.ma_bull || stock.breakout_strategy.includes('均線多頭') || stock.breakout_strategy.includes('均線糾結');
+        }
+        if (tabId === 'VOLUME') {
+          return stock.volume_ratio >= 1.3 || stock.breakout_strategy.includes('爆量長紅');
+        }
+        if (tabId === 'BOLLINGER') {
+          return stock.criteria.bollinger_up || stock.breakout_strategy.includes('布林噴出');
+        }
+        if (tabId === 'INSTITUTION') {
+          return stock.criteria.inst_buy || stock.breakout_strategy.includes('法人鎖碼');
+        }
+        if (tabId === 'BOTTOM') {
+          return stock.breakout_strategy.includes('底部打底') || stock.breakout_strategy.includes('W底型態');
+        }
+        if (tabId === 'ETF') {
+          return (stock.sector && stock.sector.includes('ETF')) || stock.breakout_strategy.includes('熱門ETF') || stock.symbol.startsWith('00');
+        }
+        if (tabId === 'ABOVE_MA60_2D') {
+          return (stock.criteria && stock.criteria.ma_bull && stock.change_pct >= -3.0) || stock.change_pct > 0 || (stock.breakout_strategy && stock.breakout_strategy.includes('站上季線2天'));
+        }
+        if (tabId === 'DEATH_CROSS') {
+          return !(stock.criteria && stock.criteria.ma_bull) || stock.change_pct <= -2.5 || (stock.rsi && stock.rsi < 53) || (stock.breakout_strategy && stock.breakout_strategy.includes('死亡交叉'));
+        }
+        if (tabId === 'GOLDEN_CROSS') {
+          return ((stock.criteria && stock.criteria.ma_bull) && (stock.change_pct >= -1.5 || (stock.rsi && stock.rsi >= 58))) || stock.change_pct > 0 || (stock.breakout_strategy && stock.breakout_strategy.includes('黃金交叉'));
+        }
+        return true;
+      };
+
+      // 切換策略勾選狀態 (支援複選一併篩選)
+      const toggleStrategyTab = (tabId) => {
+        if (tabId === 'ALL') {
+          setSelectedTabs(['ALL']);
+          return;
+        }
+        setSelectedTabs(prev => {
+          const withoutAll = prev.filter(id => id !== 'ALL');
+          if (withoutAll.includes(tabId)) {
+            const next = withoutAll.filter(id => id !== tabId);
+            return next.length === 0 ? ['ALL'] : next;
+          } else {
+            return [...withoutAll, tabId];
+          }
+        });
+      };
+
+      // 策略多選勾選與搜尋過濾
       const filteredStocks = useMemo(() => {
         // 1. 若有搜尋文字，優先呈現全市場搜尋結果！
         if (searchTerm.trim()) {
@@ -1386,42 +1610,148 @@
           return fullMarketStocks;
         }
 
-        // 3. 核心焦點池模式
+        // 3. 核心焦點池模式 (支援多條件勾選一併篩選)
+        const activeFilters = selectedTabs.filter(id => id !== 'ALL');
         return stocks.filter(stock => {
           if (stock.breakout_stars < minStars) return false;
           if (onlyMaBull && !stock.criteria.ma_bull) return false;
 
-          // 標籤篩選
-          if (selectedTab === 'BREAKOUT') {
-            return stock.change_pct > 0 || stock.breakout_strategy.includes('即時起漲');
-          }
-          if (selectedTab === 'MA_CROSS') {
-            return stock.criteria.ma_bull || stock.breakout_strategy.includes('均線多頭') || stock.breakout_strategy.includes('均線糾結');
-          }
-          if (selectedTab === 'VOLUME') {
-            return stock.volume_ratio >= 1.3 || stock.breakout_strategy.includes('爆量長紅');
-          }
-          if (selectedTab === 'BOLLINGER') {
-            return stock.criteria.bollinger_up || stock.breakout_strategy.includes('布林噴出');
-          }
-          if (selectedTab === 'INSTITUTION') {
-            return stock.criteria.inst_buy || stock.breakout_strategy.includes('法人鎖碼');
-          }
-          if (selectedTab === 'BOTTOM') {
-            return stock.breakout_strategy.includes('底部打底') || stock.breakout_strategy.includes('W底型態');
-          }
-          if (selectedTab === 'ETF') {
-            return (stock.sector && stock.sector.includes('ETF')) || stock.breakout_strategy.includes('熱門ETF') || stock.symbol.startsWith('00');
-          }
+          if (activeFilters.length === 0) return true;
 
-          return true;
+          if (multiFilterMode === 'OR') {
+            return activeFilters.some(tabId => matchStockByTab(stock, tabId));
+          }
+          // 預設 AND：所有勾選的條件一併同時符合
+          return activeFilters.every(tabId => matchStockByTab(stock, tabId));
         });
-      }, [stocks, selectedTab, searchTerm, searchResults, minStars, onlyMaBull, scanMode, fullMarketStocks]);
+      }, [stocks, selectedTabs, multiFilterMode, searchTerm, searchResults, minStars, onlyMaBull, scanMode, fullMarketStocks]);
 
       // 計算起漲統計數據
       const breakoutCount = stocks.filter(s => s.change_pct > 0 || s.breakout_stars >= 4).length;
       const totalCount = stocks.length;
       const breakoutRatio = Math.round((breakoutCount / totalCount) * 100);
+
+      // 若尚未輸入正確的「程式通行金鑰」，顯示金鑰驗證鎖定畫面
+      if (!isAppAuthorized) {
+        return (
+          <div className="min-h-screen flex items-center justify-center p-4 bg-[#161b26]">
+            <div className="pro-panel p-6 md:p-8 rounded-3xl max-w-md w-full space-y-5 border-rose-500/40 shadow-2xl bg-gradient-to-b from-[#1e2536] to-[#19202e]">
+              <div className="flex flex-col items-center text-center space-y-2">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-rose-600 via-red-500 to-amber-500 flex items-center justify-center text-3xl text-white shadow-lg shadow-rose-900/50">
+                  🔑
+                </div>
+                <h1 className="text-2xl font-black text-white tracking-wide mt-1">領漲型態 AI 選股系統</h1>
+                <p className="text-xs text-slate-400">
+                  本系統受專屬金鑰保護，請輸入<strong className="text-amber-300">「程式通行金鑰密碼」</strong>以進入即時看盤介面
+                </p>
+              </div>
+
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                    <span>🔐 程式通行金鑰密碼：</span>
+                    <span className="text-[11px] text-slate-500">管理員亦可直接輸入管理員密碼</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={gateKeyInput}
+                    onChange={(e) => {
+                      setGateKeyInput(e.target.value);
+                      setGateKeyError('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleVerifyAppAccessKey();
+                    }}
+                    placeholder="請輸入程式金鑰密碼..."
+                    autoFocus
+                    className="w-full bg-[#141923] text-sm text-white px-4 py-3 rounded-xl border border-slate-700 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono text-center tracking-widest"
+                  />
+                </div>
+
+                {gateKeyError && (
+                  <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-700/60 text-xs font-bold text-rose-300 text-center">
+                    {gateKeyError}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleVerifyAppAccessKey}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-600 via-red-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white text-sm font-black shadow-lg shadow-rose-900/40 transition-all active:scale-98 cursor-pointer"
+                >
+                  🔓 驗證金鑰進入系統
+                </button>
+              </div>
+
+              {/* 管理員直接於首頁設定/修改程式金鑰密碼 */}
+              <div className="pt-3 border-t border-slate-800/90 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGateAdminPanel(prev => !prev);
+                    setGateAdminMsg('');
+                  }}
+                  className="w-full py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-amber-300 border border-slate-800 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                >
+                  <span>👑</span>
+                  <span>管理者設定金鑰密碼</span>
+                </button>
+
+                {showGateAdminPanel && (
+                  <div className="p-3.5 rounded-2xl bg-[#141923] border border-amber-500/40 space-y-2.5 text-xs">
+                    <div className="font-bold text-amber-300">👑 管理員驗證與設定新金鑰密碼</div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-400">1. 輸入管理員專用密碼：</label>
+                      <input
+                        type="password"
+                        value={gateAdminPwdInput}
+                        onChange={(e) => setGateAdminPwdInput(e.target.value)}
+                        placeholder="請輸入管理員密碼..."
+                        className="w-full bg-[#1c2333] text-xs text-white px-3 py-2 rounded-lg border border-slate-700 focus:outline-none focus:border-amber-400 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-400">2. 設定新的「程式通行金鑰密碼」：</label>
+                      <input
+                        type="text"
+                        value={gateNewAppKeyInput}
+                        onChange={(e) => setGateNewAppKeyInput(e.target.value)}
+                        placeholder="輸入要給使用者的新金鑰密碼..."
+                        className="w-full bg-[#1c2333] text-xs text-white px-3 py-2 rounded-lg border border-slate-700 focus:outline-none focus:border-amber-400 font-mono"
+                      />
+                    </div>
+                    {gateAdminMsg && (
+                      <div className={`text-[11px] font-bold ${gateAdminMsg.startsWith('✔') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {gateAdminMsg}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (gateAdminPwdInput !== adminPassword) {
+                          setGateAdminMsg('❌ 管理員專用密碼錯誤！');
+                          return;
+                        }
+                        if (!gateNewAppKeyInput.trim()) {
+                          setGateAdminMsg('⚠️ 請輸入新的程式金鑰密碼！');
+                          return;
+                        }
+                        handleAdminSetAppKey(gateNewAppKeyInput.trim());
+                        setGateAdminMsg(`✔ 已成功將程式金鑰密碼設定為：${gateNewAppKeyInput.trim()}`);
+                        setGateAdminPwdInput('');
+                        setGateNewAppKeyInput('');
+                      }}
+                      className="w-full py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all"
+                    >
+                      💾 確認更新程式金鑰密碼
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
 
       return (
         <div className="min-h-screen p-3 md:p-6 max-w-7xl mx-auto space-y-5">
@@ -1513,11 +1843,28 @@
               </button>
 
               <button
-                onClick={() => setShowApiKeyModal(true)}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-900/60 to-purple-900/60 hover:from-indigo-800/80 hover:to-purple-800/80 border border-indigo-700/60 text-indigo-200 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                onClick={() => {
+                  setModalNewAppKey(appAccessKey);
+                  setKeyModalAdminError('');
+                  setKeyModalAdminInput('');
+                  if (isAdminUnlocked) setIsKeyModalAdminUnlocked(true);
+                  setShowApiKeyModal(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-500 hover:to-orange-500 border border-amber-500/60 text-white text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
               >
-                <span>🤖 Gemini AI 金鑰</span>
-                {geminiApiKey && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>}
+                <span>🔑 程式金鑰設定</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsAppAuthorized(false);
+                  try { sessionStorage.removeItem('app_unlocked_key'); } catch(e) {}
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-rose-300 text-xs font-bold transition-all flex items-center gap-1"
+                title="鎖定程式畫面"
+              >
+                <span>🔒 鎖定</span>
               </button>
 
 
@@ -1566,6 +1913,209 @@
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* 📢 每日重點消息欄 (管理員專用密碼保護) */}
+          <div className="pro-panel p-4 md:p-5 rounded-2xl space-y-3 border-amber-500/30 bg-gradient-to-br from-[#1e2536] via-[#22293c] to-[#1e2536]">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+              <div className="flex items-center gap-2.5">
+                <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black text-xs flex items-center gap-1 shadow-sm">
+                  <span>📢</span>
+                  <span>每日重點消息</span>
+                </span>
+                {dailyNewsTime && (
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    最後更新：{dailyNewsTime}
+                  </span>
+                )}
+                {adminSaveToast && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold">
+                    {adminSaveToast}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {!isAdminUnlocked ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPasswordPrompt(prev => !prev);
+                      setPasswordError('');
+                      setPasswordInput('');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>🔐</span>
+                    <span>管理員輸入 / 編輯</span>
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold">
+                      🔓 管理員已解鎖
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowChangePwd(prev => !prev)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold border border-slate-700"
+                    >
+                      🔑 修改密碼
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAdminUnlocked(false);
+                        setShowChangePwd(false);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-300 text-[11px] font-bold border border-slate-700"
+                    >
+                      🔒 鎖定退出
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 管理員密碼驗證輸入列 */}
+            {showPasswordPrompt && !isAdminUnlocked && (
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-amber-500/40 flex flex-wrap items-center justify-between gap-2 animate-fadeIn">
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                  <span className="text-xs font-bold text-amber-300">🔑 請輸入管理員專用密碼：</span>
+                  <input
+                    type="password"
+                    value={passwordInput}
+                    onChange={(e) => {
+                      setPasswordInput(e.target.value);
+                      setPasswordError('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAdminUnlock();
+                    }}
+                    placeholder="輸入專用密碼解鎖編輯..."
+                    className="bg-[#161b26] text-xs text-white px-3 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-amber-400 font-mono w-48"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAdminUnlock}
+                    className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black transition-all"
+                  >
+                    確認解鎖
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPasswordPrompt(false);
+                      setPasswordError('');
+                      setPasswordInput('');
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-bold"
+                  >
+                    取消
+                  </button>
+                  {passwordError && (
+                    <span className="text-xs font-bold text-rose-400">{passwordError}</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 修改管理員密碼輸入列 */}
+            {isAdminUnlocked && showChangePwd && (
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-indigo-500/40 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-indigo-300">設定新管理員密碼：</span>
+                <input
+                  type="password"
+                  value={newPwdInput}
+                  onChange={(e) => setNewPwdInput(e.target.value)}
+                  placeholder="輸入新密碼..."
+                  className="bg-[#161b26] text-xs text-white px-3 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-400 font-mono w-44"
+                />
+                <button
+                  type="button"
+                  onClick={handleUpdateAdminPassword}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                >
+                  儲存新密碼
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowChangePwd(false)}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold"
+                >
+                  取消
+                </button>
+              </div>
+            )}
+
+            {/* 每日重點消息：管理員空白輸入框 VS 訪客檢視欄 */}
+            {isAdminUnlocked ? (
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className="text-slate-400 font-bold">快速插入標籤：</span>
+                  {[
+                    '🔥 【今日盤勢重點】',
+                    '🚀 【主流領漲族群】',
+                    '🏛️ 【法人籌碼動向】',
+                    '⚠️ 【關鍵支撐與風險提醒】'
+                  ].map((tag, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setDailyNewsDraft(prev => (prev ? prev + '\n' + tag + ' ' : tag + ' '))}
+                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-bold transition-all"
+                    >
+                      + {tag}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  rows={4}
+                  value={dailyNewsDraft}
+                  onChange={(e) => setDailyNewsDraft(e.target.value)}
+                  placeholder="請在此空白欄輸入今日重點消息、盤前焦點、主力飆股觀察或操作提醒..."
+                  className="w-full bg-[#161b26] text-sm text-slate-100 p-3.5 rounded-xl border border-amber-500/50 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 leading-relaxed placeholder:text-slate-500"
+                />
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDailyNewsDraft('')}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700"
+                  >
+                    🗑️ 清空欄內文字
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveDailyNews(false)}
+                      className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all shadow-md"
+                    >
+                      💾 儲存發布消息
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveDailyNews(true)}
+                      className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white text-xs font-black transition-all shadow-md"
+                    >
+                      💾 儲存並鎖定管理員
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="min-h-[68px] p-3.5 rounded-xl bg-[#161b26]/90 border border-slate-800/90 flex items-center">
+                {dailyNewsText && dailyNewsText.trim() ? (
+                  <div className="text-sm text-slate-100 whitespace-pre-wrap leading-relaxed w-full">
+                    {dailyNewsText}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500 italic select-none">
+                    尚未輸入今日重點消息（管理員請點擊右上角「🔐 管理員輸入 / 編輯」輸入專用密碼後即可撰寫每日重點消息）
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 模式切換器：🔥 核心焦點池 VS 🌐 全市場 1,800+ 檔即時掃描 */}
@@ -1683,31 +2233,42 @@
             )}
           </div>
 
-          {/* 起漲六大策略分頁 Tab Bar (僅於核心焦點池模式顯示) */}
+          {/* 起漲策略多選勾選篩選列 (僅於核心焦點池模式顯示，支援複選一併篩選) */}
           {scanMode === 'CORE' && (
-          <div className="pro-panel p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 w-full lg:w-auto">
+          <div className="pro-panel p-3.5 rounded-2xl space-y-2.5">
+            <div className="flex flex-wrap items-center gap-2">
               {[
                 { id: 'ALL', label: '🔥 全部起漲標的', count: stocks.length },
-                { id: 'BREAKOUT', label: '🚀 即時爆發起漲', count: stocks.filter(s => s.change_pct > 0).length },
-                { id: 'MA_CROSS', label: '⚡ 均線糾結突破', count: stocks.filter(s => s.criteria.ma_bull).length },
-                { id: 'VOLUME', label: '💥 爆量長紅攻擊', count: stocks.filter(s => s.volume_ratio >= 1.3).length },
-                { id: 'BOLLINGER', label: '💎 布林通道噴出', count: stocks.filter(s => s.criteria.bollinger_up).length },
-                { id: 'INSTITUTION', label: '🏛️ 外資投信鎖碼', count: stocks.filter(s => s.criteria.inst_buy).length },
-                { id: 'BOTTOM', label: '🏰 W底/築底起漲', count: stocks.filter(s => s.breakout_strategy.includes('底部打底') || s.breakout_strategy.includes('W底型態')).length },
-                { id: 'ETF', label: '🏅 國民熱門 ETF', count: stocks.filter(s => (s.sector && s.sector.includes('ETF')) || s.breakout_strategy.includes('熱門ETF') || s.symbol.startsWith('00')).length },
+                { id: 'BREAKOUT', label: '🚀 即時爆發起漲', count: stocks.filter(s => matchStockByTab(s, 'BREAKOUT')).length },
+                { id: 'MA_CROSS', label: '⚡ 均線糾結突破', count: stocks.filter(s => matchStockByTab(s, 'MA_CROSS')).length },
+                { id: 'VOLUME', label: '💥 爆量長紅攻擊', count: stocks.filter(s => matchStockByTab(s, 'VOLUME')).length },
+                { id: 'BOLLINGER', label: '💎 布林通道噴出', count: stocks.filter(s => matchStockByTab(s, 'BOLLINGER')).length },
+                { id: 'INSTITUTION', label: '🏛️ 外資投信鎖碼', count: stocks.filter(s => matchStockByTab(s, 'INSTITUTION')).length },
+                { id: 'BOTTOM', label: '🏰 W底/築底起漲', count: stocks.filter(s => matchStockByTab(s, 'BOTTOM')).length },
+                { id: 'ETF', label: '🏅 國民熱門 ETF', count: stocks.filter(s => matchStockByTab(s, 'ETF')).length },
+                { id: 'ABOVE_MA60_2D', label: '📈 站上季線2天', count: stocks.filter(s => matchStockByTab(s, 'ABOVE_MA60_2D')).length },
+                { id: 'DEATH_CROSS', label: '📉 死亡交叉', count: stocks.filter(s => matchStockByTab(s, 'DEATH_CROSS')).length },
+                { id: 'GOLDEN_CROSS', label: '✨ 黃金交叉', count: stocks.filter(s => matchStockByTab(s, 'GOLDEN_CROSS')).length },
               ].map(tab => {
-                const isActive = selectedTab === tab.id;
+                const isActive = selectedTabs.includes(tab.id);
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setSelectedTab(tab.id)}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                    type="button"
+                    onClick={() => toggleStrategyTab(tab.id)}
+                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 shrink-0 select-none cursor-pointer ${
                       isActive
-                        ? 'bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-lg shadow-rose-900/40 border border-rose-500/50 scale-[1.02]'
-                        : 'bg-slate-900/80 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                        ? 'bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-lg shadow-rose-900/40 border border-rose-400/70 scale-[1.01]'
+                        : 'bg-slate-900/85 text-slate-300 hover:bg-slate-800 border border-slate-800 hover:border-slate-700'
                     }`}
                   >
+                    <span className={`w-4 h-4 rounded flex items-center justify-center text-[11px] font-black border transition-all ${
+                      isActive
+                        ? 'bg-white text-rose-600 border-white shadow-xs'
+                        : 'bg-slate-950/70 text-transparent border-slate-600'
+                    }`}>
+                      ✓
+                    </span>
                     <span>{tab.label}</span>
                     <span className={`px-1.5 py-0.2 rounded text-[10px] ${isActive ? 'bg-black/30 text-white' : 'bg-slate-800 text-slate-400'}`}>
                       {tab.count}
@@ -1717,12 +2278,89 @@
               })}
             </div>
 
-            {/* 搜尋提示標籤 */}
-            <div className="hidden lg:flex items-center text-xs text-slate-400 gap-1.5">
-              <span>💡</span>
-              <span>可於上方搜尋列查詢全台股 2,300+ 檔標的</span>
+            {/* 勾選狀態列與多選篩選邏輯切換 */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedTabs.includes('ALL') ? (
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <span>☑️</span>
+                    <span>可同時勾選上方多個條件一併篩選（目前顯示全部 <strong className="text-white">{stocks.length}</strong> 檔）</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-rose-400 font-bold flex items-center gap-1">
+                      <span>✅ 已勾選 {selectedTabs.length} 項條件</span>
+                      <span className="text-slate-300">➔ 篩選出 <strong className="text-white text-sm">{filteredStocks.length}</strong> 檔符合標的</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTabs(['ALL'])}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-[11px] transition-all border border-slate-700"
+                    >
+                      ✕ 清除重設
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-slate-900/90 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                  <span className="text-slate-400 px-2 font-bold">多選模式:</span>
+                  <button
+                    type="button"
+                    onClick={() => setMultiFilterMode('AND')}
+                    className={`px-2 py-1 rounded-md font-bold transition-all ${
+                      multiFilterMode === 'AND'
+                        ? 'bg-rose-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    同時符合 (交集)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMultiFilterMode('OR')}
+                    className={`px-2 py-1 rounded-md font-bold transition-all ${
+                      multiFilterMode === 'OR'
+                        ? 'bg-rose-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    符合任一 (聯集)
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
+          )}
+
+          {/* 若勾選多個條件後無同時符合的股票時提示 */}
+          {scanMode === 'CORE' && !searchTerm.trim() && filteredStocks.length === 0 && (
+            <div className="p-8 rounded-3xl bg-slate-900/50 border border-slate-800 text-center space-y-3">
+              <div className="text-3xl">☑️</div>
+              <div className="text-base font-bold text-white">目前無同時符合所有勾選條件的股票</div>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                您勾選了 {selectedTabs.length} 項篩選條件，目前沒有標的同時滿足全部條件。您可以切換為「符合任一 (聯集)」或取消部分勾選條件。
+              </p>
+              <div className="flex items-center justify-center gap-2 pt-1">
+                {multiFilterMode === 'AND' && (
+                  <button
+                    type="button"
+                    onClick={() => setMultiFilterMode('OR')}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all"
+                  >
+                    改為「符合任一 (聯集)」篩選
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedTabs(['ALL'])}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all"
+                >
+                  清除勾選返回全部 (28檔)
+                </button>
+              </div>
+            </div>
           )}
 
           {/* 搜尋狀態提示橫幅 */}
@@ -2252,14 +2890,17 @@
             </div>
           )}
 
-          {/* Gemini API 金鑰自訂設定 Modal */}
+          {/* 🔑 管理員專屬：程式通行金鑰密碼 & Gemini AI 金鑰設定 Modal */}
           {showApiKeyModal && (
             <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-3 md:p-6 z-50 animate-fadeIn">
-              <div className="pro-panel p-6 rounded-3xl max-w-lg w-full space-y-4 border-indigo-700/60 shadow-2xl bg-[#1e2536]">
+              <div className="pro-panel p-6 rounded-3xl max-w-lg w-full space-y-4 border-amber-500/50 shadow-2xl bg-[#1e2536]">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <div className="flex items-center gap-2.5">
                     <span className="text-2xl">🔑</span>
-                    <h3 className="text-lg font-black text-white">設定 Google Gemini API Key</h3>
+                    <div>
+                      <h3 className="text-lg font-black text-white">程式金鑰與管理員密碼設定</h3>
+                      <p className="text-[11px] text-slate-400">僅限擁有管理員專用密碼之管理者可設定與修改金鑰密碼</p>
+                    </div>
                   </div>
                   <button
                     onClick={() => setShowApiKeyModal(false)}
@@ -2269,52 +2910,190 @@
                   </button>
                 </div>
 
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  系統預設已內建 <strong>Gemini 智慧金融語意引擎</strong>，無需金鑰即可正常使用！<br/>
-                  若您有自己的 Google AI Studio 金鑰（免費申請），可在此填入以解鎖 <strong>Gemini 1.5 Flash 深度即時推論</strong>。
-                </p>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs text-slate-400 font-bold">Gemini API Key:</label>
-                  <input
-                    type="password"
-                    defaultValue={geminiApiKey}
-                    id="geminiKeyInput"
-                    placeholder="AIzaSy..."
-                    className="w-full bg-[#1a2130] text-xs text-white px-3.5 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 font-mono"
-                  />
-                  <div className="text-[10px] text-slate-500">
-                    金鑰僅保存在您的個人瀏覽器中 (localStorage)，不會洩漏至任何外部伺服器。
+                {!isKeyModalAdminUnlocked ? (
+                  <div className="space-y-3 py-2">
+                    <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-amber-500/40 space-y-2.5">
+                      <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <span>🔐</span>
+                        <span>請先輸入「管理員專用密碼」以解鎖金鑰設定權限：</span>
+                      </div>
+                      <input
+                        type="password"
+                        value={keyModalAdminInput}
+                        onChange={(e) => {
+                          setKeyModalAdminInput(e.target.value);
+                          setKeyModalAdminError('');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (keyModalAdminInput === adminPassword) {
+                              setIsKeyModalAdminUnlocked(true);
+                              setIsAdminUnlocked(true);
+                              setModalNewAppKey(appAccessKey);
+                              setKeyModalAdminError('');
+                            } else {
+                              setKeyModalAdminError('❌ 管理員專用密碼錯誤，無法進入設定！');
+                            }
+                          }
+                        }}
+                        placeholder="請輸入管理員專用密碼..."
+                        autoFocus
+                        className="w-full bg-[#161b26] text-xs text-white px-3.5 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-400 font-mono"
+                      />
+                      {keyModalAdminError && (
+                        <div className="text-xs font-bold text-rose-400">{keyModalAdminError}</div>
+                      )}
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKeyModal(false)}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (keyModalAdminInput === adminPassword) {
+                              setIsKeyModalAdminUnlocked(true);
+                              setIsAdminUnlocked(true);
+                              setModalNewAppKey(appAccessKey);
+                              setKeyModalAdminError('');
+                            } else {
+                              setKeyModalAdminError('❌ 管理員專用密碼錯誤，無法進入設定！');
+                            }
+                          }}
+                          className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 text-xs font-black"
+                        >
+                          確認解鎖管理權限
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-4">
+                    {keyModalToast && (
+                      <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs font-bold text-center">
+                        {keyModalToast}
+                      </div>
+                    )}
 
-                <div className="flex items-center justify-between pt-2">
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    className="text-xs text-indigo-400 hover:underline flex items-center gap-1"
-                  >
-                    <span>👉 免費申請 Gemini Key</span>
-                  </a>
+                    {/* 1. 設定程式通行金鑰密碼 */}
+                    <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-amber-500/40 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs text-amber-300 font-black">🔑 1. 設定「程式通行金鑰密碼」 (使用者進入程式的金鑰)</label>
+                        <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-700/40">
+                          目前金鑰：{appAccessKey}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={modalNewAppKey}
+                          onChange={(e) => setModalNewAppKey(e.target.value)}
+                          placeholder="輸入新的程式通行金鑰密碼..."
+                          className="flex-1 bg-[#161b26] text-xs text-white px-3.5 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-400 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAdminSetAppKey(modalNewAppKey)}
+                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shrink-0"
+                        >
+                          儲存金鑰密碼
+                        </button>
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        使用者打開本選股程式時，必須輸入此金鑰密碼才可進入看盤。
+                      </div>
+                    </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleSaveGeminiKey('')}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
-                    >
-                      清除金鑰
-                    </button>
-                    <button
-                      onClick={() => {
-                        const val = document.getElementById('geminiKeyInput').value.trim();
-                        handleSaveGeminiKey(val);
-                      }}
-                      className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30"
-                    >
-                      儲存設定
-                    </button>
+                    {/* 2. 修改管理員專用密碼 */}
+                    <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+                      <label className="text-xs text-indigo-300 font-black block">👑 2. 修改「管理員專用密碼」 (管理員最高權限密碼)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          value={modalNewAdminPwd}
+                          onChange={(e) => setModalNewAdminPwd(e.target.value)}
+                          placeholder="輸入新的管理員專用密碼..."
+                          className="flex-1 bg-[#161b26] text-xs text-white px-3.5 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-400 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const clean = (modalNewAdminPwd || '').trim();
+                            if (!clean) return;
+                            setAdminPassword(clean);
+                            try { localStorage.setItem('admin_daily_news_pwd', clean); } catch(e) {}
+                            setModalNewAdminPwd('');
+                            setKeyModalToast('✔ 管理員專用密碼已成功更新！');
+                            setTimeout(() => setKeyModalToast(''), 3000);
+                          }}
+                          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shrink-0"
+                        >
+                          更新管理員密碼
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3. 設定 Google Gemini API Key */}
+                    <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs text-slate-300 font-bold">🤖 3. 設定 Google Gemini AI 金鑰 (選填):</label>
+                        <a
+                          href="https://aistudio.google.com/app/apikey"
+                          target="_blank"
+                          className="text-[11px] text-indigo-400 hover:underline"
+                        >
+                          👉 免費申請 Gemini Key
+                        </a>
+                      </div>
+                      <input
+                        type="password"
+                        defaultValue={geminiApiKey}
+                        id="geminiKeyInput"
+                        placeholder="AIzaSy... (未填寫亦可使用內建智慧語意引擎)"
+                        className="w-full bg-[#161b26] text-xs text-white px-3.5 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveGeminiKey('')}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
+                        >
+                          清除 AI 金鑰
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = document.getElementById('geminiKeyInput').value.trim();
+                            handleSaveGeminiKey(val);
+                          }}
+                          className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                        >
+                          儲存 AI 金鑰
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setIsKeyModalAdminUnlocked(false)}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-300 text-xs font-bold"
+                      >
+                        🔒 鎖定管理員權限
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKeyModal(false)}
+                        className="px-5 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold"
+                      >
+                        完成關閉
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           )}

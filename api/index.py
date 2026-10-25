@@ -36,6 +36,39 @@ MARKET_CACHE_TTL = 45.0
 _NEWS_CACHE = {}
 NEWS_CACHE_TTL = 300.0
 
+# 管理員每日重點消息與程式金鑰雲端儲存區
+_DAILY_NEWS_STORE = {
+    "text": "",
+    "updated_at": "",
+    "app_key": "1688"
+}
+_DAILY_NEWS_FILE = "/tmp/admin_daily_news.json" if os.name != "nt" else os.path.join(os.path.dirname(__file__), "admin_daily_news.json")
+
+def get_or_save_daily_news(action="get", text=None, updated_at=None, app_key=None):
+    global _DAILY_NEWS_STORE
+    if not _DAILY_NEWS_STORE.get("text"):
+        try:
+            if os.path.exists(_DAILY_NEWS_FILE):
+                with open(_DAILY_NEWS_FILE, "r", encoding="utf-8") as nf:
+                    loaded = json.load(nf)
+                    if isinstance(loaded, dict):
+                        _DAILY_NEWS_STORE.update(loaded)
+        except Exception:
+            pass
+
+    if action == "save":
+        if text is not None:
+            _DAILY_NEWS_STORE["text"] = text
+            _DAILY_NEWS_STORE["updated_at"] = updated_at or time.strftime('%Y/%m/%d %H:%M:%S', time.localtime())
+        if app_key is not None and str(app_key).strip():
+            _DAILY_NEWS_STORE["app_key"] = str(app_key).strip()
+        try:
+            with open(_DAILY_NEWS_FILE, "w", encoding="utf-8") as nf:
+                json.dump(_DAILY_NEWS_STORE, nf, ensure_ascii=False)
+        except Exception:
+            pass
+    return _DAILY_NEWS_STORE
+
 DEFAULT_STOCKS_METADATA = [
     {"symbol": "2330.TW", "name": "台積電 (TSMC)", "market": "TW", "sector": "半導體晶圓代工", "base": 2385.0, "chg": -35.0, "pct": -1.45, "pe": 26.5, "yield": 1.4, "yoy": 36.2, "score": 96, "rating": "強力推薦", "kline": "🚀 守穩支撐逢低布局", "reasons": ["CoWoS 先進封裝產能供不應求", "全球 AI 加速晶片 99% 由台積電代工"]},
     {"symbol": "3017.TW", "name": "奇鋐 (AVC)", "market": "TW", "sector": "AI水冷散熱龍頭", "base": 3145.0, "chg": -90.0, "pct": -2.78, "pe": 22.4, "yield": 2.3, "yoy": 45.0, "score": 95, "rating": "強力推薦", "kline": "🚀 沿月線多頭推進", "reasons": ["3D VC 與水冷板市佔率第一", "美系 CSP 獨家與主力水冷供應商"]},
@@ -900,11 +933,18 @@ def get_live_data():
 
     stocks.sort(key=lambda x: x["ai_score"], reverse=True)
 
+    # 同步帶入管理員每日重點消息與系統金鑰，讓全世界所有人每 5 秒自動同步接收！
+    news_info = get_or_save_daily_news(action="get")
     result = {
         "total": len(stocks),
         "data_source": "台灣證券交易所 (TWSE) & 台灣期交所 (TAIFEX) 雲端直連即時連網",
         "indices": indices,
-        "stocks": stocks
+        "stocks": stocks,
+        "daily_news": {
+            "text": news_info.get("text", ""),
+            "updated_at": news_info.get("updated_at", ""),
+            "app_key": news_info.get("app_key", "1688")
+        }
     }
 
     _CACHE["timestamp"] = now
@@ -945,6 +985,12 @@ class handler(BaseHTTPRequestHandler):
             elif url_parts.path.startswith('/api/broker-chip'):
                 sym = query_params.get('symbol', ['2330.TW'])[0]
                 data = get_broker_chip(sym)
+            elif url_parts.path.startswith('/api/daily-news'):
+                act = query_params.get('action', ['get'])[0]
+                txt = query_params.get('text', [None])[0]
+                tm = query_params.get('time', [None])[0]
+                ak = query_params.get('app_key', [None])[0]
+                data = get_or_save_daily_news(action=act, text=txt, updated_at=tm, app_key=ak)
             elif url_parts.path.startswith('/api/stock-news'):
                 sym = query_params.get('symbol', ['2330.TW'])[0]
                 nm = query_params.get('name', [None])[0]

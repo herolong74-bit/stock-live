@@ -933,11 +933,18 @@ def get_live_data():
 
     stocks.sort(key=lambda x: x["ai_score"], reverse=True)
 
+    # 同步帶入管理員每日重點消息與系統金鑰，讓全世界所有人每 5 秒自動同步接收！
+    news_info = get_or_save_daily_news(action="get")
     result = {
         "total": len(stocks),
         "data_source": "台灣證券交易所 (TWSE) & 台灣期交所 (TAIFEX) 雲端直連即時連網",
         "indices": indices,
-        "stocks": stocks
+        "stocks": stocks,
+        "daily_news": {
+            "text": news_info.get("text", ""),
+            "updated_at": news_info.get("updated_at", ""),
+            "app_key": news_info.get("app_key", "1688")
+        }
     }
 
     _CACHE["timestamp"] = now

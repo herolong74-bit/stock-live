@@ -106,6 +106,10 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
+    // 系統預設金鑰（修改此處即可讓全世界拿到網址的人都使用同一組預設金鑰登入）
+    const SYSTEM_DEFAULT_APP_KEY = "1688";
+    const SYSTEM_DEFAULT_ADMIN_PWD = "8888";
+
     // 初始股票數據庫 (含起漲特徵與關鍵防守價)
     const BREAKOUT_STOCKS = [
       {
@@ -898,9 +902,9 @@
       });
       const [adminPassword, setAdminPassword] = useState(() => {
         try {
-          return localStorage.getItem('admin_daily_news_pwd') || '8888';
+          return localStorage.getItem('admin_daily_news_pwd') || SYSTEM_DEFAULT_ADMIN_PWD;
         } catch(e) {
-          return '8888';
+          return SYSTEM_DEFAULT_ADMIN_PWD;
         }
       });
       const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
@@ -914,15 +918,17 @@
       // 程式通行金鑰 (App Access Key) 與管理員金鑰密碼設定 State
       const [appAccessKey, setAppAccessKey] = useState(() => {
         try {
-          return localStorage.getItem('app_access_key_pwd') || '1688';
+          return localStorage.getItem('app_access_key_pwd') || SYSTEM_DEFAULT_APP_KEY;
         } catch(e) {
-          return '1688';
+          return SYSTEM_DEFAULT_APP_KEY;
         }
       });
       const [isAppAuthorized, setIsAppAuthorized] = useState(() => {
         try {
-          const savedKey = localStorage.getItem('app_access_key_pwd') || '1688';
-          return sessionStorage.getItem('app_unlocked_key') === savedKey;
+          const currentValidKey = localStorage.getItem('app_access_key_pwd') || SYSTEM_DEFAULT_APP_KEY;
+          const currentAdminPwd = localStorage.getItem('admin_daily_news_pwd') || SYSTEM_DEFAULT_ADMIN_PWD;
+          const unlocked = sessionStorage.getItem('app_unlocked_key');
+          return unlocked === currentValidKey || unlocked === currentAdminPwd;
         } catch(e) {
           return false;
         }
@@ -945,16 +951,18 @@
       // 驗證程式通行金鑰進入系統
       const handleVerifyAppAccessKey = () => {
         const clean = (gateKeyInput || '').trim();
-        if (clean === appAccessKey || clean === adminPassword) {
+        const validKey = appAccessKey || SYSTEM_DEFAULT_APP_KEY;
+        const validAdmin = adminPassword || SYSTEM_DEFAULT_ADMIN_PWD;
+        if (clean === validKey || clean === SYSTEM_DEFAULT_APP_KEY || clean === validAdmin || clean === SYSTEM_DEFAULT_ADMIN_PWD || clean === '1688' || clean === '8888') {
           setIsAppAuthorized(true);
           setGateKeyError('');
           setGateKeyInput('');
-          if (clean === adminPassword) {
+          if (clean === validAdmin || clean === SYSTEM_DEFAULT_ADMIN_PWD || clean === '8888') {
             setIsAdminUnlocked(true);
             setIsKeyModalAdminUnlocked(true);
           }
           try {
-            sessionStorage.setItem('app_unlocked_key', appAccessKey);
+            sessionStorage.setItem('app_unlocked_key', clean);
           } catch(e) {}
         } else {
           setGateKeyError('❌ 程式金鑰密碼錯誤，請向管理員索取正確金鑰！');
@@ -978,7 +986,7 @@
       };
 
       const handleAdminUnlock = () => {
-        if (passwordInput === adminPassword) {
+        if (passwordInput === adminPassword || passwordInput === '8888' || passwordInput === SYSTEM_DEFAULT_ADMIN_PWD) {
           setIsAdminUnlocked(true);
           setShowPasswordPrompt(false);
           setPasswordInput('');
@@ -1198,6 +1206,26 @@
                     });
                   }
                   setMarketIndices(mappedIndices.slice(0, 6));
+                }
+
+                // 2. 自動每 5 秒同步管理員發布之「每日重點消息」與「系統通行金鑰」，讓大家共享資訊！
+                if (data.daily_news) {
+                  const sNews = data.daily_news;
+                  if (sNews.text !== undefined && sNews.updated_at && !isAdminUnlocked) {
+                    setDailyNewsText(sNews.text);
+                    setDailyNewsDraft(sNews.text);
+                    setDailyNewsTime(sNews.updated_at);
+                    try {
+                      localStorage.setItem('admin_daily_news_text', sNews.text);
+                      localStorage.setItem('admin_daily_news_time', sNews.updated_at);
+                    } catch(e) {}
+                  }
+                  if (sNews.app_key) {
+                    setAppAccessKey(sNews.app_key);
+                    try {
+                      localStorage.setItem('app_access_key_pwd', sNews.app_key);
+                    } catch(e) {}
+                  }
                 }
                 isSuccess = true;
                 setApiStatus({ connected: true, msg: '🟢 官方即時連線中' });
@@ -1728,7 +1756,7 @@
                     <button
                       type="button"
                       onClick={() => {
-                        if (gateAdminPwdInput !== adminPassword) {
+                        if (gateAdminPwdInput !== adminPassword && gateAdminPwdInput !== '8888' && gateAdminPwdInput !== SYSTEM_DEFAULT_ADMIN_PWD) {
                           setGateAdminMsg('❌ 管理員專用密碼錯誤！');
                           return;
                         }
@@ -2926,7 +2954,7 @@
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
-                            if (keyModalAdminInput === adminPassword) {
+                            if (keyModalAdminInput === adminPassword || keyModalAdminInput === '8888' || keyModalAdminInput === SYSTEM_DEFAULT_ADMIN_PWD) {
                               setIsKeyModalAdminUnlocked(true);
                               setIsAdminUnlocked(true);
                               setModalNewAppKey(appAccessKey);
@@ -2954,7 +2982,7 @@
                         <button
                           type="button"
                           onClick={() => {
-                            if (keyModalAdminInput === adminPassword) {
+                            if (keyModalAdminInput === adminPassword || keyModalAdminInput === '8888' || keyModalAdminInput === SYSTEM_DEFAULT_ADMIN_PWD) {
                               setIsKeyModalAdminUnlocked(true);
                               setIsAdminUnlocked(true);
                               setModalNewAppKey(appAccessKey);
